@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "research-llm-distillation"
+version = "0.1.0"
+description = ""
+authors = ["Vijay Selvaraj <vijay.selvaraj@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+torch = "^2.4.0"
+transformers = "^4.44.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
