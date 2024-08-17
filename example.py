@@ -10,7 +10,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from datasets import load_dataset
 
 # 1. Load the Teacher and Student Models
-teacher_model_name = "huggingface/llama-3.1"  # Replace with the actual model name
+teacher_model_name = "openai-community/gpt2"  # Replace with the actual model name
 student_model_name = "bert-base-uncased"  # Replace with the student model name
 
 teacher_model = AutoModelForSequenceClassification.from_pretrained(teacher_model_name, num_labels=2)
