@@ -1,5 +1,5 @@
 """
-Sample code for distillation using Hugging Face Transformers. This code was generated from ChatGPT.
+Sample code for distillation using Hugging Face Transformers. This code was generated from ChatGPT and corrected.
 """
 
 import torch
@@ -10,8 +10,8 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from datasets import load_dataset
 
 # 1. Load the Teacher and Student Models
-teacher_model_name = "openai-community/gpt2"  # Replace with the actual model name
-student_model_name = "bert-base-uncased"  # Replace with the student model name
+teacher_model_name = "bert-base-uncased"  # Replace with an actual available model
+student_model_name = "distilbert-base-uncased"  # A smaller model for distillation
 
 teacher_model = AutoModelForSequenceClassification.from_pretrained(teacher_model_name, num_labels=2)
 student_model = AutoModelForSequenceClassification.from_pretrained(student_model_name, num_labels=2)
@@ -23,7 +23,7 @@ student_tokenizer = AutoTokenizer.from_pretrained(student_model_name)
 dataset = load_dataset("imdb", split="train[:1000]")  # Small sample for demonstration
 
 def tokenize_data(examples):
-    return student_tokenizer(examples["text"], padding="max_length", truncation=True)
+    return student_tokenizer(examples["text"], padding="max_length", truncation=True, max_length=512)
 
 tokenized_dataset = dataset.map(tokenize_data, batched=True)
 tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
@@ -32,11 +32,15 @@ tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask
 def distillation_loss(student_logits, teacher_logits, labels, temperature=2.0, alpha=0.5):
     ce_loss = F.cross_entropy(student_logits, labels)
     teacher_probs = F.softmax(teacher_logits / temperature, dim=-1)
-    student_probs = F.log_softmax(student_logits / temperature, dim=-1)
-    kl_loss = F.kl_div(student_probs, teacher_probs, reduction="batchmean") * (temperature ** 2)
+    student_log_probs = F.log_softmax(student_logits / temperature, dim=-1)
+    kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction="batchmean") * (temperature ** 2)
     return alpha * ce_loss + (1 - alpha) * kl_loss
 
 # 4. Training Loop
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+teacher_model.to(device)
+student_model.to(device)
+
 train_loader = DataLoader(tokenized_dataset, batch_size=16, shuffle=True)
 optimizer = torch.optim.Adam(student_model.parameters(), lr=5e-5)
 
@@ -45,10 +49,11 @@ teacher_model.eval()  # Freeze teacher model during distillation
 student_model.train()
 
 for epoch in range(num_epochs):
+    total_loss = 0
     for batch in train_loader:
-        input_ids = batch["input_ids"]
-        attention_mask = batch["attention_mask"]
-        labels = batch["label"]
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        labels = batch["label"].to(device)
 
         # Get teacher predictions
         with torch.no_grad():
@@ -65,7 +70,10 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
-    print(f"Epoch {epoch+1} completed with loss: {loss.item()}")
+        total_loss += loss.item()
+
+    avg_loss = total_loss / len(train_loader)
+    print(f"Epoch {epoch+1} completed with average loss: {avg_loss:.4f}")
 
 # 5. Evaluate the Student Model
 test_dataset = load_dataset("imdb", split="test[:1000]")  # Small sample for demonstration
@@ -79,9 +87,9 @@ total = 0
 
 with torch.no_grad():
     for batch in test_loader:
-        input_ids = batch["input_ids"]
-        attention_mask = batch["attention_mask"]
-        labels = batch["label"]
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        labels = batch["label"].to(device)
 
         outputs = student_model(input_ids=input_ids, attention_mask=attention_mask)
         predictions = torch.argmax(outputs.logits, dim=-1)
